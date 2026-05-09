@@ -1,9 +1,4 @@
-import Anthropic from "@anthropic-ai/sdk";
 import { AuditResult, AuditInput } from "./types";
-
-const anthropic = new Anthropic({
-  apiKey: process.env.ANTHROPIC_API_KEY || "dummy",
-});
 
 export async function generateSummary(input: AuditInput, result: AuditResult): Promise<string> {
   const recommendationsText = result.recommendations
@@ -31,20 +26,41 @@ Rules:
 - Keep it under 120 words.`;
 
   try {
-    const response = await anthropic.messages.create({
-      model: "claude-3-5-sonnet-20241022",
-      max_tokens: 250,
-      system: "You are a concise B2B SaaS finance assistant. Write practical, honest AI spend audit summaries. Do not exaggerate savings. Do not invent facts. Keep tone clear, founder-friendly, and action-oriented.",
-      messages: [{ role: "user", content: prompt }],
+    const response = await fetch("https://openrouter.ai/api/v1/chat/completions", {
+      method: "POST",
+      headers: {
+        "Authorization": `Bearer ${process.env.OPENROUTER_API_KEY || process.env.ANTHROPIC_API_KEY}`,
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        model: "meta-llama/llama-3.3-70b-instruct:free",
+        messages: [
+          { 
+            role: "system", 
+            content: "You are a concise B2B SaaS finance assistant. Write practical, honest AI spend audit summaries. Do not exaggerate savings. Do not invent facts. Keep tone clear, founder-friendly, and action-oriented." 
+          },
+          { 
+            role: "user", 
+            content: prompt 
+          }
+        ],
+        max_tokens: 250,
+      }),
     });
 
-    const content = response.content[0];
-    if (content.type === "text") {
-       return content.text;
+    if (!response.ok) {
+      throw new Error(`OpenRouter API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const content = data.choices?.[0]?.message?.content;
+    
+    if (content) {
+       return content.trim();
     }
     return fallback;
   } catch (error) {
-    console.error("Anthropic API error:", error);
+    console.error("OpenRouter API error:", error);
     return fallback; // Fallback summary works
   }
 }
